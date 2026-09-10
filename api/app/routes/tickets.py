@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import Ticket, User
+from app.models import Reply, Ticket, User
 
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 
@@ -14,8 +14,21 @@ class CreateTicketRequest(BaseModel):
     description: str = Field(min_length=1)
 
 
-def ticket_payload(ticket: Ticket) -> dict:
+class CreateReplyRequest(BaseModel):
+    body: str = Field(min_length=1)
+
+
+def reply_payload(reply: Reply) -> dict:
     return {
+        "id": reply.id,
+        "author": {"id": reply.author_id, "username": reply.author.username},
+        "body": reply.body,
+        "created_at": reply.created_at.isoformat(),
+    }
+
+
+def ticket_payload(ticket: Ticket, include_replies: bool = False) -> dict:
+    payload = {
         "id": ticket.id,
         "title": ticket.title,
         "description": ticket.description,
@@ -24,6 +37,9 @@ def ticket_payload(ticket: Ticket) -> dict:
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
     }
+    if include_replies:
+        payload["replies"] = [reply_payload(r) for r in ticket.replies]
+    return payload
 
 
 def get_visible_ticket(db: Session, ticket_id: int, user: User) -> Ticket:
@@ -73,4 +89,19 @@ def get_ticket(
     db: Session = Depends(get_db),
 ) -> dict:
     ticket = get_visible_ticket(db, ticket_id, current_user)
-    return ticket_payload(ticket)
+    return ticket_payload(ticket, include_replies=True)
+
+
+@router.post("/{ticket_id}/replies", status_code=201)
+def create_reply(
+    ticket_id: int,
+    payload: CreateReplyRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    ticket = get_visible_ticket(db, ticket_id, current_user)
+    reply = Reply(ticket_id=ticket.id, author_id=current_user.id, body=payload.body)
+    db.add(reply)
+    db.commit()
+    db.refresh(reply)
+    return reply_payload(reply)

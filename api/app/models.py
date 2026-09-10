@@ -50,3 +50,23 @@ class Ticket(Base):
     )
 
     creator: Mapped[User] = relationship()
+    replies: Mapped[list["Reply"]] = relationship(
+        order_by="Reply.id", cascade="all, delete-orphan"
+    )
+
+
+class Reply(Base):
+    __tablename__ = "replies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(
+        ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False
+    )
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    ticket: Mapped[Ticket] = relationship()
+    author: Mapped[User] = relationship()

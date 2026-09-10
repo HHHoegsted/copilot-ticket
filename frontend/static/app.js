@@ -177,17 +177,48 @@ function renderDetail(id) {
   app.innerHTML = `<div class="card wide"><h1>Ticket ${id}</h1><p class="muted">Loading&hellip;</p></div>`;
   api(`/api/tickets/${id}`)
     .then((ticket) => {
+      const replies = ticket.replies
+        .map(
+          (r) => `
+        <div class="reply">
+          <div class="reply-meta">
+            ${escapeHtml(r.author.username)} &middot; ${new Date(r.created_at).toLocaleString()}
+          </div>
+          <div class="reply-body">${escapeHtml(r.body)}</div>
+        </div>`
+        )
+        .join("");
       app.innerHTML = `
       <div class="card wide">
         <h1>${ticket.id}: ${escapeHtml(ticket.title)}</h1>
         <p class="muted">
           Status: <span class="badge status-${ticket.status}">${ticket.status}</span>
           &middot; Created by ${escapeHtml(ticket.creator.username)}
-          &middot; ${new Date(ticket.created_at).toLocaleString()}
+          &middot; Created ${new Date(ticket.created_at).toLocaleString()}
+          &middot; Updated ${new Date(ticket.updated_at).toLocaleString()}
         </p>
         <p>${escapeHtml(ticket.description)}</p>
+        <h2>Conversation</h2>
+        <div class="thread">${replies || '<p class="muted">No replies yet.</p>'}</div>
+        <form id="reply-form">
+          <label>Reply
+            <textarea name="body" required rows="3"></textarea>
+          </label>
+          <p class="error" id="reply-error"></p>
+          <button type="submit">Post reply</button>
+        </form>
         <p class="muted"><a href="#/tickets">Back to tickets</a></p>
       </div>`;
+      document.getElementById("reply-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(event.target));
+        try {
+          await api(`/api/tickets/${id}/replies`, { method: "POST", body: JSON.stringify(data) });
+          renderDetail(id);
+        } catch (error) {
+          document.getElementById("reply-error").textContent = error.message;
+        }
+      });
     })
     .catch(() => renderNotFound());
 }
