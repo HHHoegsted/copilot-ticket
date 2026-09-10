@@ -1,0 +1,3 @@
+# Vanilla JS without a framework or build step
+
+The frontend is a small set of screens (login, register, ticket list, ticket detail, create ticket). We deliberately chose plain HTML/JS served as static files by nginx — no framework, no build step — over React/Vue plus a bundler. The UI is simple enough that a component model buys little, and skipping the build pipeline keeps the container image and the development loop minimal.
