@@ -18,6 +18,10 @@ class CreateReplyRequest(BaseModel):
     body: str = Field(min_length=1)
 
 
+class AssignTicketRequest(BaseModel):
+    assignee_id: int
+
+
 def reply_payload(reply: Reply) -> dict:
     return {
         "id": reply.id,
@@ -34,6 +38,11 @@ def ticket_payload(ticket: Ticket, include_replies: bool = False) -> dict:
         "description": ticket.description,
         "status": ticket.status,
         "creator": {"id": ticket.creator_id, "username": ticket.creator.username},
+        "assignee": (
+            {"id": ticket.assignee_id, "username": ticket.assignee.username}
+            if ticket.assignee
+            else None
+        ),
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
     }
@@ -90,6 +99,29 @@ def get_ticket(
 ) -> dict:
     ticket = get_visible_ticket(db, ticket_id, current_user)
     return ticket_payload(ticket, include_replies=True)
+
+
+@router.put("/{ticket_id}/assignee")
+def assign_ticket(
+    ticket_id: int,
+    payload: AssignTicketRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if current_user.role != "agent":
+        raise HTTPException(status_code=403, detail="Only agents can assign tickets")
+    ticket = db.get(Ticket, ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    assignee = db.get(User, payload.assignee_id)
+    if assignee is None:
+        raise HTTPException(status_code=404, detail="Assignee not found")
+    if assignee.role != "agent":
+        raise HTTPException(status_code=422, detail="Assignee must be an agent")
+    ticket.assignee_id = assignee.id
+    db.commit()
+    db.refresh(ticket)
+    return ticket_payload(ticket)
 
 
 @router.post("/{ticket_id}/replies", status_code=201)

@@ -42,6 +42,7 @@ class Ticket(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
     creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -49,7 +50,8 @@ class Ticket(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    creator: Mapped[User] = relationship()
+    creator: Mapped[User] = relationship(foreign_keys=[creator_id])
+    assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id])
     replies: Mapped[list["Reply"]] = relationship(
         order_by="Reply.id", cascade="all, delete-orphan"
     )

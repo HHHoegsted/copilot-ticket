@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from app import db
 from app.config import Settings
 from app.models import User
+from app.routes.agents import router as agents_router
 from app.routes.auth import router as auth_router
 from app.routes.health import router as health_router
 from app.routes.tickets import router as tickets_router
@@ -57,6 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(agents_router)
     app.include_router(tickets_router)
     return app
 

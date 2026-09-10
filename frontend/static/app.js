@@ -112,6 +112,7 @@ function renderList() {
           <td>${t.id}</td>
           <td>${escapeHtml(t.title)}</td>
           <td><span class="badge status-${t.status}">${t.status}</span></td>
+          <td>${t.assignee ? escapeHtml(t.assignee.username) : '<span class="muted">unassigned</span>'}</td>
           <td>${new Date(t.created_at).toLocaleString()}</td>
         </tr>`
         )
@@ -125,7 +126,7 @@ function renderList() {
         ${
           tickets.length
             ? `<table>
-              <thead><tr><th>#</th><th>Title</th><th>Status</th><th>Created</th></tr></thead>
+              <thead><tr><th>#</th><th>Title</th><th>Status</th><th>Assignee</th><th>Created</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>`
             : '<p class="muted">No tickets yet.</p>'
@@ -175,8 +176,10 @@ function renderCreate() {
 
 function renderDetail(id) {
   app.innerHTML = `<div class="card wide"><h1>Ticket ${id}</h1><p class="muted">Loading&hellip;</p></div>`;
-  api(`/api/tickets/${id}`)
-    .then((ticket) => {
+  const agentsPromise =
+    currentUser.role === "agent" ? api("/api/agents").catch(() => []) : Promise.resolve([]);
+  Promise.all([api(`/api/tickets/${id}`), agentsPromise])
+    .then(([ticket, agents]) => {
       const replies = ticket.replies
         .map(
           (r) => `
@@ -194,9 +197,26 @@ function renderDetail(id) {
         <p class="muted">
           Status: <span class="badge status-${ticket.status}">${ticket.status}</span>
           &middot; Created by ${escapeHtml(ticket.creator.username)}
+          &middot; Assignee: ${ticket.assignee ? escapeHtml(ticket.assignee.username) : "unassigned"}
           &middot; Created ${new Date(ticket.created_at).toLocaleString()}
           &middot; Updated ${new Date(ticket.updated_at).toLocaleString()}
         </p>
+        ${
+          currentUser.role === "agent"
+            ? `<div class="row">
+              <button class="btn" id="claim-btn">Claim</button>
+              <select id="assignee-select">
+                ${agents
+                  .map(
+                    (a) =>
+                      `<option value="${a.id}" ${ticket.assignee && ticket.assignee.id === a.id ? "selected" : ""}>${escapeHtml(a.username)}</option>`
+                  )
+                  .join("")}
+              </select>
+              <button class="btn" id="assign-btn">Assign</button>
+            </div>`
+            : ""
+        }
         <p>${escapeHtml(ticket.description)}</p>
         <h2>Conversation</h2>
         <div class="thread">${replies || '<p class="muted">No replies yet.</p>'}</div>
@@ -219,6 +239,23 @@ function renderDetail(id) {
           document.getElementById("reply-error").textContent = error.message;
         }
       });
+      if (currentUser.role === "agent") {
+        const assign = async (assigneeId) => {
+          try {
+            await api(`/api/tickets/${id}/assignee`, {
+              method: "PUT",
+              body: JSON.stringify({ assignee_id: assigneeId }),
+            });
+            renderDetail(id);
+          } catch (error) {
+            alert(error.message);
+          }
+        };
+        document.getElementById("claim-btn").addEventListener("click", () => assign(currentUser.id));
+        document.getElementById("assign-btn").addEventListener("click", () =>
+          assign(Number(document.getElementById("assignee-select").value))
+        );
+      }
     })
     .catch(() => renderNotFound());
 }
