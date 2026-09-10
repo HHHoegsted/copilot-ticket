@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -20,6 +23,26 @@ class CreateReplyRequest(BaseModel):
 
 class AssignTicketRequest(BaseModel):
     assignee_id: int
+
+
+class UpdateStatusRequest(BaseModel):
+    status: Literal["open", "in_progress", "resolved", "closed"]
+
+
+# Valid transitions per role. Anything not listed is rejected: 403 when the
+# target belongs to the other role's transitions, 409 otherwise.
+AGENT_TRANSITIONS = {
+    "open": {"in_progress"},
+    "in_progress": {"resolved"},
+    "resolved": {"open"},
+    "closed": set(),
+}
+CUSTOMER_TRANSITIONS = {
+    "open": set(),
+    "in_progress": set(),
+    "resolved": {"closed", "open"},
+    "closed": set(),
+}
 
 
 def reply_payload(reply: Reply) -> dict:
@@ -119,6 +142,36 @@ def assign_ticket(
     if assignee.role != "agent":
         raise HTTPException(status_code=422, detail="Assignee must be an agent")
     ticket.assignee_id = assignee.id
+    db.commit()
+    db.refresh(ticket)
+    return ticket_payload(ticket)
+
+
+@router.put("/{ticket_id}/status")
+def update_status(
+    ticket_id: int,
+    payload: UpdateStatusRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    ticket = get_visible_ticket(db, ticket_id, current_user)
+    own = CUSTOMER_TRANSITIONS if current_user.role == "customer" else AGENT_TRANSITIONS
+    other = AGENT_TRANSITIONS if current_user.role == "customer" else CUSTOMER_TRANSITIONS
+    if payload.status not in own[ticket.status]:
+        if payload.status in other[ticket.status]:
+            if current_user.role == "customer":
+                raise HTTPException(
+                    status_code=403, detail="Only agents can move the ticket to that status"
+                )
+            raise HTTPException(
+                status_code=403, detail="Only the customer can close a resolved ticket"
+            )
+        raise HTTPException(
+            status_code=409,
+            detail=f"Invalid transition from {ticket.status} to {payload.status}",
+        )
+    ticket.status = payload.status
+    ticket.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(ticket)
     return ticket_payload(ticket)

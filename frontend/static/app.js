@@ -214,8 +214,18 @@ function renderDetail(id) {
                   .join("")}
               </select>
               <button class="btn" id="assign-btn">Assign</button>
+            </div>
+            <div class="row">
+              ${ticket.status === "open" ? '<button class="btn" id="status-btn" data-status="in_progress">Start progress</button>' : ""}
+              ${ticket.status === "in_progress" ? '<button class="btn" id="status-btn" data-status="resolved">Mark resolved</button>' : ""}
+              ${ticket.status === "resolved" ? '<button class="btn" id="status-btn" data-status="open">Reopen</button>' : ""}
             </div>`
-            : ""
+            : ticket.creator.id === currentUser.id && ticket.status === "resolved"
+              ? `<div class="row">
+                <button class="btn" id="status-btn" data-status="closed">Close</button>
+                <button class="btn" id="status-btn-2" data-status="open">Reopen</button>
+              </div>`
+              : ""
         }
         <p>${escapeHtml(ticket.description)}</p>
         <h2>Conversation</h2>
@@ -256,6 +266,19 @@ function renderDetail(id) {
           assign(Number(document.getElementById("assignee-select").value))
         );
       }
+      document.querySelectorAll("[data-status]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            await api(`/api/tickets/${id}/status`, {
+              method: "PUT",
+              body: JSON.stringify({ status: btn.dataset.status }),
+            });
+            renderDetail(id);
+          } catch (error) {
+            alert(error.message);
+          }
+        });
+      });
     })
     .catch(() => renderNotFound());
 }
