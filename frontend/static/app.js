@@ -112,6 +112,7 @@ function renderList() {
           <td>${t.id}</td>
           <td>${escapeHtml(t.title)}</td>
           <td><span class="badge status-${t.status}">${t.status}</span></td>
+          <td><span class="badge priority-${t.priority}">${t.priority}</span></td>
           <td>${t.assignee ? escapeHtml(t.assignee.username) : '<span class="muted">unassigned</span>'}</td>
           <td>${new Date(t.created_at).toLocaleString()}</td>
         </tr>`
@@ -126,7 +127,7 @@ function renderList() {
         ${
           tickets.length
             ? `<table>
-              <thead><tr><th>#</th><th>Title</th><th>Status</th><th>Assignee</th><th>Created</th></tr></thead>
+              <thead><tr><th>#</th><th>Title</th><th>Status</th><th>Priority</th><th>Assignee</th><th>Created</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>`
             : '<p class="muted">No tickets yet.</p>'
@@ -156,6 +157,14 @@ function renderCreate() {
         </label>
         <label>Description
           <textarea name="description" required rows="5"></textarea>
+        </label>
+        <label>Priority
+          <select name="priority">
+            <option value="low">Low</option>
+            <option value="normal" selected>Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
         </label>
         <p class="error" id="create-error"></p>
         <button type="submit">Create ticket</button>
@@ -196,6 +205,7 @@ function renderDetail(id) {
         <h1>${ticket.id}: ${escapeHtml(ticket.title)}</h1>
         <p class="muted">
           Status: <span class="badge status-${ticket.status}">${ticket.status}</span>
+          &middot; Priority: <span class="badge priority-${ticket.priority}">${ticket.priority}</span>
           &middot; Created by ${escapeHtml(ticket.creator.username)}
           &middot; Assignee: ${ticket.assignee ? escapeHtml(ticket.assignee.username) : "unassigned"}
           &middot; Created ${new Date(ticket.created_at).toLocaleString()}
@@ -219,6 +229,12 @@ function renderDetail(id) {
               ${ticket.status === "open" ? '<button class="btn" id="status-btn" data-status="in_progress">Start progress</button>' : ""}
               ${ticket.status === "in_progress" ? '<button class="btn" id="status-btn" data-status="resolved">Mark resolved</button>' : ""}
               ${ticket.status === "resolved" ? '<button class="btn" id="status-btn" data-status="open">Reopen</button>' : ""}
+              <select id="priority-select">
+                ${["low", "normal", "high", "urgent"]
+                  .map((p) => `<option value="${p}" ${ticket.priority === p ? "selected" : ""}>${p}</option>`)
+                  .join("")}
+              </select>
+              <button class="btn" id="priority-btn">Set priority</button>
             </div>`
             : ticket.creator.id === currentUser.id && ticket.status === "resolved"
               ? `<div class="row">
@@ -265,6 +281,17 @@ function renderDetail(id) {
         document.getElementById("assign-btn").addEventListener("click", () =>
           assign(Number(document.getElementById("assignee-select").value))
         );
+        document.getElementById("priority-btn").addEventListener("click", async () => {
+          try {
+            await api(`/api/tickets/${id}/priority`, {
+              method: "PUT",
+              body: JSON.stringify({ priority: document.getElementById("priority-select").value }),
+            });
+            renderDetail(id);
+          } catch (error) {
+            alert(error.message);
+          }
+        });
       }
       document.querySelectorAll("[data-status]").forEach((btn) => {
         btn.addEventListener("click", async () => {

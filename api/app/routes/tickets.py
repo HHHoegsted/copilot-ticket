@@ -12,9 +12,13 @@ from app.models import Reply, Ticket, User
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 
 
+Priority = Literal["low", "normal", "high", "urgent"]
+
+
 class CreateTicketRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = Field(min_length=1)
+    priority: Priority = "normal"
 
 
 class CreateReplyRequest(BaseModel):
@@ -27,6 +31,10 @@ class AssignTicketRequest(BaseModel):
 
 class UpdateStatusRequest(BaseModel):
     status: Literal["open", "in_progress", "resolved", "closed"]
+
+
+class UpdatePriorityRequest(BaseModel):
+    priority: Priority
 
 
 # Valid transitions per role. Anything not listed is rejected: 403 when the
@@ -60,6 +68,7 @@ def ticket_payload(ticket: Ticket, include_replies: bool = False) -> dict:
         "title": ticket.title,
         "description": ticket.description,
         "status": ticket.status,
+        "priority": ticket.priority,
         "creator": {"id": ticket.creator_id, "username": ticket.creator.username},
         "assignee": (
             {"id": ticket.assignee_id, "username": ticket.assignee.username}
@@ -94,6 +103,7 @@ def create_ticket(
         title=payload.title,
         description=payload.description,
         status="open",
+        priority=payload.priority,
         creator_id=current_user.id,
     )
     db.add(ticket)
@@ -142,6 +152,27 @@ def assign_ticket(
     if assignee.role != "agent":
         raise HTTPException(status_code=422, detail="Assignee must be an agent")
     ticket.assignee_id = assignee.id
+    db.commit()
+    db.refresh(ticket)
+    return ticket_payload(ticket)
+
+
+@router.put("/{ticket_id}/priority")
+def update_priority(
+    ticket_id: int,
+    payload: UpdatePriorityRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if current_user.role != "agent":
+        raise HTTPException(
+            status_code=403, detail="Only agents can change a ticket's priority"
+        )
+    ticket = db.get(Ticket, ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    ticket.priority = payload.priority
+    ticket.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(ticket)
     return ticket_payload(ticket)
