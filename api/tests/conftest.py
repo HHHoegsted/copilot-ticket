@@ -37,6 +37,22 @@ def _reset_database() -> None:
     engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def _clean_database(app):
+    """Wipe all rows after each test so tests are order-independent.
+
+    The next test's client startup re-runs the seed, restoring the agent.
+    """
+    yield
+    from app import db
+    from app.models import Base
+
+    assert db.engine is not None
+    with db.engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(sa.text(f'TRUNCATE "{table.name}" RESTART IDENTITY CASCADE'))
+
+
 @pytest.fixture(scope="session")
 def app():
     _reset_database()
@@ -53,6 +69,16 @@ def app():
 def client(app):
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture()
+def make_client(app):
+    """Create additional logged-out clients (separate cookie jars)."""
+
+    def _make_client() -> TestClient:
+        return TestClient(app)
+
+    return _make_client
 
 
 @pytest.fixture()

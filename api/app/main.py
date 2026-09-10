@@ -10,6 +10,7 @@ from app.config import Settings
 from app.models import User
 from app.routes.auth import router as auth_router
 from app.routes.health import router as health_router
+from app.routes.tickets import router as tickets_router
 from app.security import hash_password
 
 ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
@@ -56,6 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(tickets_router)
     return app
 
 

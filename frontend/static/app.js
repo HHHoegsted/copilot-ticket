@@ -33,11 +33,15 @@ function navigate(hash) {
 
 function render() {
   const hash = window.location.hash || "#/login";
-  if (hash.startsWith("#/login")) return renderLogin();
-  if (hash.startsWith("#/register")) return renderRegister();
+  if (hash === "#/login") return renderLogin();
+  if (hash === "#/register") return renderRegister();
   // Everything else is a protected page.
   if (!currentUser) return navigate("#/login");
-  return renderHome();
+  if (hash === "#/tickets") return renderList();
+  if (hash === "#/tickets/new") return renderCreate();
+  const match = hash.match(/^#\/tickets\/(\d+)$/);
+  if (match) return renderDetail(match[1]);
+  return renderNotFound();
 }
 
 function renderLogin() {
@@ -97,18 +101,109 @@ function renderRegister() {
   });
 }
 
-function renderHome() {
+function renderList() {
+  app.innerHTML = `<div class="card wide"><h1>Tickets</h1><p class="muted">Loading&hellip;</p></div>`;
+  api("/api/tickets")
+    .then((tickets) => {
+      const rows = tickets
+        .map(
+          (t) => `
+        <tr class="clickable" data-id="${t.id}">
+          <td>${t.id}</td>
+          <td>${escapeHtml(t.title)}</td>
+          <td><span class="badge status-${t.status}">${t.status}</span></td>
+          <td>${new Date(t.created_at).toLocaleString()}</td>
+        </tr>`
+        )
+        .join("");
+      app.innerHTML = `
+      <div class="card wide">
+        <div class="row">
+          <h1>Tickets</h1>
+          ${currentUser.role === "customer" ? '<a class="btn" href="#/tickets/new">New ticket</a>' : ""}
+        </div>
+        ${
+          tickets.length
+            ? `<table>
+              <thead><tr><th>#</th><th>Title</th><th>Status</th><th>Created</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>`
+            : '<p class="muted">No tickets yet.</p>'
+        }
+        <p class="muted"><a href="#/login" id="logout-link">Log out</a></p>
+      </div>`;
+      document.querySelectorAll("tr.clickable").forEach((tr) => {
+        tr.addEventListener("click", () => navigate(`#/tickets/${tr.dataset.id}`));
+      });
+      document.getElementById("logout-link").addEventListener("click", (event) => {
+        event.preventDefault();
+        logout();
+      });
+    })
+    .catch((error) => {
+      app.innerHTML = `<div class="card wide"><h1>Tickets</h1><p class="error">${escapeHtml(error.message)}</p></div>`;
+    });
+}
+
+function renderCreate() {
   app.innerHTML = `
     <div class="card">
-      <h1>Ticketing</h1>
-      <p>Logged in as <strong>${escapeHtml(currentUser.username)}</strong> (${escapeHtml(currentUser.role)})</p>
-      <button id="logout">Log out</button>
+      <h1>New ticket</h1>
+      <form id="create-form">
+        <label>Title
+          <input name="title" required maxlength="200">
+        </label>
+        <label>Description
+          <textarea name="description" required rows="5"></textarea>
+        </label>
+        <p class="error" id="create-error"></p>
+        <button type="submit">Create ticket</button>
+      </form>
+      <p class="muted"><a href="#/tickets">Back to tickets</a></p>
     </div>`;
-  document.getElementById("logout").addEventListener("click", async () => {
-    await api("/api/auth/logout", { method: "POST" });
-    currentUser = null;
-    navigate("#/login");
+  document.getElementById("create-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.target));
+    try {
+      const ticket = await api("/api/tickets", { method: "POST", body: JSON.stringify(data) });
+      navigate(`#/tickets/${ticket.id}`);
+    } catch (error) {
+      document.getElementById("create-error").textContent = error.message;
+    }
   });
+}
+
+function renderDetail(id) {
+  app.innerHTML = `<div class="card wide"><h1>Ticket ${id}</h1><p class="muted">Loading&hellip;</p></div>`;
+  api(`/api/tickets/${id}`)
+    .then((ticket) => {
+      app.innerHTML = `
+      <div class="card wide">
+        <h1>${ticket.id}: ${escapeHtml(ticket.title)}</h1>
+        <p class="muted">
+          Status: <span class="badge status-${ticket.status}">${ticket.status}</span>
+          &middot; Created by ${escapeHtml(ticket.creator.username)}
+          &middot; ${new Date(ticket.created_at).toLocaleString()}
+        </p>
+        <p>${escapeHtml(ticket.description)}</p>
+        <p class="muted"><a href="#/tickets">Back to tickets</a></p>
+      </div>`;
+    })
+    .catch(() => renderNotFound());
+}
+
+function renderNotFound() {
+  app.innerHTML = `
+    <div class="card">
+      <h1>Not found</h1>
+      <p class="muted"><a href="#/tickets">Back to tickets</a></p>
+    </div>`;
+}
+
+async function logout() {
+  await api("/api/auth/logout", { method: "POST" });
+  currentUser = null;
+  navigate("#/login");
 }
 
 window.addEventListener("hashchange", render);
